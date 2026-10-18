@@ -596,9 +596,10 @@ export function generateImage(prompt: string, width?: number, height?: number): 
   const w = clamp(width, 768);
   const h = clamp(height, 768);
   const seed = Math.floor(Math.random() * 1_000_000);
+  // Served through our own /api/img proxy — never expose the generator host.
+  const base = (process.env.URL || process.env.DEPLOY_PRIME_URL || '').replace(/\/+$/, '');
   const url =
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}` +
-    `?width=${w}&height=${h}&seed=${seed}&nologo=true`;
+    `${base}/api/img?prompt=${encodeURIComponent(p)}&w=${w}&h=${h}&seed=${seed}`;
   return {
     ok: true,
     data: {
@@ -631,17 +632,17 @@ export async function seeImage(rawUrl: string): Promise<ToolResult> {
       return {
         ok: false,
         error:
-          'image link is DEAD (HTTP 404 — file removed or expired). Tell the user this link no longer works and ask them to send a fresh link or upload the image directly. Do NOT guess or try other URLs.',
+          'image link is dead (HTTP 404 — removed or expired). Explain in your OWN words, in the user\'s language, that the link no longer works; ask for a fresh link or a direct upload. Never copy this note verbatim.',
       };
     }
     if (res.status === 403) {
       return {
         ok: false,
         error:
-          'image host refuses robot access (HTTP 403). Tell the user this site blocks automated viewing — ask them to download and upload the image in chat instead.',
+          'image host refuses automated access (HTTP 403). In your OWN words, in the user\'s language, explain the site blocks bots; ask them to download and upload the image in chat instead. Never copy this note verbatim.',
       };
     }
-    if (!res.ok) return { ok: false, error: `image server responded HTTP ${res.status} — tell the user honestly` };
+    if (!res.ok) return { ok: false, error: `image server responded HTTP ${res.status} — explain honestly in the user's language, in your own words` };
     const ct = res.headers.get('content-type') ?? '';
     if (!/^image\//i.test(ct)) {
       return {
@@ -661,7 +662,7 @@ export async function seeImage(rawUrl: string): Promise<ToolResult> {
       return {
         ok: false,
         error:
-          'my eyes are rate-limited right now (all vision models busy). Tell the user image viewing is temporarily unavailable and to try again in a minute. Do NOT invent image descriptions.',
+          'my eyes are rate-limited right now (all vision models busy). In your own words, in the user\'s language, say image viewing is temporarily unavailable and ask them to retry in a minute. Never invent image descriptions and never copy this note verbatim.',
       };
     }
     if (e instanceof VisionError) {

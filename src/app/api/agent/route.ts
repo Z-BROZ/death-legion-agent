@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { SYSTEM_PROMPT } from '@/lib/agent/prompt';
 import { createBrain } from '@/lib/agent/brain';
 import { containsFakeToolResult, executeTool, parseToolCall, rescueToolCall } from '@/lib/agent/tools';
+import { describeImage, VisionBusyError } from '@/lib/agent/vision';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -9,10 +10,13 @@ export const maxDuration = 300;
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  images?: string[]; // data URLs — only honoured on the LAST user message
 }
 
-const MAX_STEPS = 5;
+const MAX_STEPS = 6;
 const MAX_HISTORY = 16;
+const MAX_IMAGES = 2;
+const MAX_IMAGE_CHARS = 3_500_000; // ~2.6 MB binary per image
 
 type SseEvent =
   | { type: 'status'; text: string }
@@ -23,16 +27,55 @@ type SseEvent =
 
 function toolPreview(result: { ok: boolean; data?: unknown; error?: string }): string {
   if (!result.ok) return result.error ?? 'error';
-  const d = result.data as { count?: number; results?: unknown[]; output?: string } | undefined;
+  const d = result.data as
+    | { count?: number; results?: unknown[]; output?: string; text?: string; description?: string }
+    | {
+        image_url?: string;
+        filename?: string;
+        size_human?: string;
+        place?: string;
+        current?: { temperature_c?: number; condition?: string };
+        pretty?: string;
+        value?: string;
+        title?: string;
+      }
+    | undefined;
   if (d && typeof d === 'object') {
     if (typeof d.output === 'string') return d.output.slice(0, 500);
-    if (typeof d.count === 'number') return `${d.count} results found`;
+    if (typeof d.count === 'number' && Array.isArray(d.results)) return `${d.count} results found`;
+    if (typeof d.description === 'string') return d.description.slice(0, 300);
+    if ('image_url' in d && typeof d.image_url === 'string') return `image generated: ${d.image_url.slice(0, 120)}`;
+    if ('filename' in d) return `${d.filename} (${d.size_human ?? '?'})`;
+    if ('place' in d && d.current) return `${d.place}: ${d.current.temperature_c}°C, ${d.current.condition}`;
+    if (typeof d.pretty === 'string') return d.pretty.slice(0, 300);
+    if (typeof d.value === 'string') return d.value.slice(0, 300);
+    if (typeof d.title === 'string' && typeof d.text === 'string') return `${d.title} — ${d.text.slice(0, 250)}`;
+    if (typeof d.text === 'string') return d.text.slice(0, 400);
   }
   try {
     return JSON.stringify(result.data).slice(0, 300);
   } catch {
     return 'done';
   }
+}
+
+/** Build "[ATTACHED IMAGE n] …" blocks for user-uploaded images. */
+async function processImages(images: string[], send: (ev: SseEvent) => void): Promise<string> {
+  const blocks: string[] = [];
+  for (let i = 0; i < images.length; i++) {
+    send({ type: 'status', text: `Analyzing image ${i + 1}…` });
+    let desc: string;
+    try {
+      desc = await describeImage(images[i]);
+    } catch (e) {
+      desc =
+        e instanceof VisionBusyError
+          ? '(The vision service is temporarily busy — you CANNOT see this image. IMPORTANT: do NOT invent or guess image URLs, and do NOT call see_image with a made-up URL. Politely tell the user that image viewing is unavailable right now and ask them to try again in about a minute, or ask them to describe the image.)'
+          : `(image analysis failed: ${(e as Error).message} — do NOT invent image URLs or guess what the image contains. Tell the user honestly.)`;
+    }
+    blocks.push(`[ATTACHED IMAGE ${i + 1}]\n${desc}`);
+  }
+  return blocks.join('\n\n');
 }
 
 export async function POST(req: NextRequest) {
@@ -49,6 +92,22 @@ export async function POST(req: NextRequest) {
   }
 
   const convo: ChatMessage[] = history.slice(-MAX_HISTORY);
+  const last = convo[convo.length - 1];
+
+  // Validate + sanitize image attachments (last user message only).
+  let images: string[] = [];
+  if (Array.isArray(last.images)) {
+    images = last.images
+      .filter((s) => typeof s === 'string' && s.startsWith('data:image/'))
+      .slice(0, MAX_IMAGES);
+    if (images.some((s) => s.length > MAX_IMAGE_CHARS)) {
+      return Response.json({ error: 'Image too large (max ~2.5MB after compression)' }, { status: 413 });
+    }
+  }
+  // Strip images from ALL history entries (context stays text-only for the brain).
+  for (const m of convo) {
+    if (m.images) delete m.images;
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -58,6 +117,12 @@ export async function POST(req: NextRequest) {
       };
 
       try {
+        // Vision pass — describe attached images BEFORE the agent loop.
+        if (images.length > 0) {
+          const blocks = await processImages(images, send);
+          last.content = `${last.content}\n\n${blocks}`.trim();
+        }
+
         const brain = await createBrain();
 
         for (let step = 0; step <= MAX_STEPS; step++) {

@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DEATH LEGION AGENT — Elite Squad AI",
-  description: "DEATH LEGION squad එකේම AI agent. Web search, JS sandbox, date/time. සිංහල / English.",
-  keywords: ["AI agent", "DEATH LEGION", "chatbot", "web search", "JS sandbox", "Sinhala", "Free Fire"],
-  authors: [{ name: "DEATH LEGION AGENT" }],
+  title: "DL AGENT — DEATH LEGION SQUAD AI",
+  description: "DEATH LEGION squad එකේම AI agent — DL AGENT. Web search, code run, AI images, weather, file download, photo/video vision. සිංහල / English.",
+  keywords: ["DL AGENT", "AI agent", "DEATH LEGION", "chatbot", "web search", "image generation", "vision", "JS sandbox", "Sinhala", "Free Fire", "Kaviz88"],
+  authors: [{ name: "Kaviz88 — DEATH LEGION" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },

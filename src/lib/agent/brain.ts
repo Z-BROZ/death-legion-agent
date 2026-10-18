@@ -200,7 +200,7 @@ class RestBrain implements AgentBrain {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`Z.ai API ${res.status}: ${text.slice(0, 300)}`);
+      throw new Error(`AI API ${res.status}: ${text.slice(0, 300)}`);
     }
     return (await res.json()) as { choices?: RestChoice[] };
   }
@@ -216,7 +216,7 @@ class RestBrain implements AgentBrain {
 
   async search(query: string, num: number): Promise<SearchResultItem[]> {
     if (IS_ZAI_REST) return this.zaiSearch(query, num);
-    // Generic OpenAI-compatible provider (e.g. notrack.ai) → scrape the web
+    // Generic OpenAI-compatible provider → scrape the web
     return webScrapeSearch(query, num);
   }
 
@@ -284,7 +284,7 @@ export async function createBrain(): Promise<AgentBrain> {
     const apiKey = process.env.ZAI_API_KEY;
     if (!apiKey) {
       throw new Error(
-        'AI brain not configured. Add ZAI_API_KEY in your hosting environment variables (a Z.ai key — or any OpenAI-compatible key like notrack.ai, then also set ZAI_BASE_URL and ZAI_MODEL).'
+        'AI brain not configured. Add ZAI_API_KEY in your hosting environment variables (any OpenAI-compatible API key), then also set ZAI_BASE_URL and ZAI_MODEL.'
       );
     }
     return new RestBrain(apiKey);

@@ -102,7 +102,10 @@ async function callVisionProvider(dataUrl: string, model: string, question?: str
   try {
     json = JSON.parse(raw) as { choices?: VisionChoice[] };
   } catch {
-    throw new VisionError('vision provider returned a non-JSON response');
+    const ct = res.headers.get('content-type') ?? 'unknown';
+    throw new VisionError(
+      `vision provider non-JSON response (HTTP ${res.status}, type ${ct}): ${raw.slice(0, 150).replace(/\s+/g, ' ')}`
+    );
   }
   const text = json?.choices?.[0]?.message?.content?.trim();
   if (!text) throw new VisionError('vision returned empty response');

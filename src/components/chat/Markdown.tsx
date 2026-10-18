@@ -2,7 +2,7 @@
 
 import { useState, ReactElement, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Check, Copy, Eye, Code2 } from 'lucide-react';
+import { Check, Copy, Eye, Code2, X } from 'lucide-react';
 
 /* ---------------- code block with copy + live html preview ---------------- */
 
@@ -66,12 +66,28 @@ function CodeBlock({ lang, raw, children }: { lang: string; raw: string; childre
         </div>
       </div>
       {preview ? (
-        <iframe
-          title="Live preview"
-          srcDoc={raw}
-          sandbox="allow-scripts allow-forms allow-popups allow-modals"
-          className="h-96 w-full bg-white"
-        />
+        <div>
+          <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-3 py-1.5">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+              <Eye className="h-3 w-3" />
+              Live Preview — rendered result
+            </span>
+            <button
+              onClick={() => setPreview(false)}
+              className="flex min-h-[24px] items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-amber-200 transition hover:bg-amber-500/20"
+              aria-label="Close live preview"
+            >
+              <X className="h-3 w-3" />
+              Close
+            </button>
+          </div>
+          <iframe
+            title="Live preview"
+            srcDoc={raw}
+            sandbox="allow-scripts allow-forms allow-popups allow-modals"
+            className="h-[420px] w-full bg-white"
+          />
+        </div>
       ) : (
         <pre className="max-w-full overflow-x-auto p-3 text-xs leading-relaxed text-zinc-200">
           {children}

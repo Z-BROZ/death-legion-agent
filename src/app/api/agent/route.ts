@@ -68,10 +68,10 @@ async function processImages(images: string[], send: (ev: SseEvent) => void): Pr
     try {
       desc = await describeImage(images[i]);
     } catch (e) {
-      desc =
-        e instanceof VisionBusyError
-          ? '(The vision service is temporarily busy — you CANNOT see this image. IMPORTANT: do NOT invent or guess image URLs, and do NOT call see_image with a made-up URL. Politely tell the user that image viewing is unavailable right now and ask them to try again in about a minute, or ask them to describe the image.)'
-          : `(image analysis failed: ${(e as Error).message} — do NOT invent image URLs or guess what the image contains. Tell the user honestly.)`;
+      const busy = e instanceof VisionBusyError;
+      desc = busy
+        ? '(The vision models are all rate-limited right now — you CANNOT see this image, and OCR could not read it. IMPORTANT: do NOT invent or guess image URLs, do NOT call see_image with a made-up URL, and do NOT guess what the image shows. Honestly tell the user — in their language — that image viewing is temporarily unavailable, and ask them to try again in a few minutes or type out what the image contains.)'
+        : `(Image analysis failed: ${(e as Error).message} — you CANNOT see this image. Do NOT invent image URLs, do NOT guess its contents, do NOT simulate seeing it. Honestly tell the user — in their language — that you could not analyze the image right now, and ask them to try again or describe it in text.)`;
     }
     blocks.push(`[ATTACHED IMAGE ${i + 1}]\n${desc}`);
   }

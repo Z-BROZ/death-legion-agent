@@ -1,6 +1,6 @@
 import vm from 'node:vm';
 import type { AgentBrain } from './brain';
-import { describeImage } from './vision';
+import { describeImage, VisionBusyError, VisionError } from './vision';
 
 export type ToolResult = {
   ok: boolean;
@@ -623,26 +623,55 @@ export async function seeImage(rawUrl: string): Promise<ToolResult> {
   }
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': UA },
+      headers: { 'User-Agent': UA, Accept: 'image/*,*/*;q=0.8' },
       signal: AbortSignal.timeout(20000),
       redirect: 'follow',
     });
-    if (!res.ok) return { ok: false, error: `image fetch HTTP ${res.status}` };
+    if (res.status === 404) {
+      return {
+        ok: false,
+        error:
+          'image link is DEAD (HTTP 404 — file removed or expired). Tell the user this link no longer works and ask them to send a fresh link or upload the image directly. Do NOT guess or try other URLs.',
+      };
+    }
+    if (res.status === 403) {
+      return {
+        ok: false,
+        error:
+          'image host refuses robot access (HTTP 403). Tell the user this site blocks automated viewing — ask them to download and upload the image in chat instead.',
+      };
+    }
+    if (!res.ok) return { ok: false, error: `image server responded HTTP ${res.status} — tell the user honestly` };
     const ct = res.headers.get('content-type') ?? '';
-    if (!/^image\//i.test(ct)) return { ok: false, error: `URL is not an image (${ct || 'unknown type'})` };
+    if (!/^image\//i.test(ct)) {
+      return {
+        ok: false,
+        error: `this URL is not an image (${ct || 'unknown type'}) — ask the user for a direct image link (ends in .jpg/.png/.webp)`,
+      };
+    }
     const len = Number(res.headers.get('content-length') ?? 0);
-    if (len > 3_000_000) return { ok: false, error: 'image too large (max 3MB)' };
+    if (len > 3_000_000) return { ok: false, error: 'image too large (max 3MB) — tell the user' };
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > 3_000_000) return { ok: false, error: 'image too large (max 3MB)' };
+    if (buf.length > 3_000_000) return { ok: false, error: 'image too large (max 3MB) — tell the user' };
     const dataUrl = `data:${ct.split(';')[0]};base64,${buf.toString('base64')}`;
     const description = await describeImage(dataUrl);
     return { ok: true, data: { url: res.url || url.toString(), description } };
   } catch (e) {
+    if (e instanceof VisionBusyError) {
+      return {
+        ok: false,
+        error:
+          'my eyes are rate-limited right now (all vision models busy). Tell the user image viewing is temporarily unavailable and to try again in a minute. Do NOT invent image descriptions.',
+      };
+    }
+    if (e instanceof VisionError) {
+      return {
+        ok: false,
+        error: `image downloaded fine but analysis failed (${e.message}) — tell the user honestly, do NOT guess what it shows`,
+      };
+    }
     const msg = (e as Error).message;
-    return {
-      ok: false,
-      error: msg.includes('busy') ? 'vision service is busy right now — try again in ~30 seconds' : `see_image failed: ${msg}`,
-    };
+    return { ok: false, error: `see_image failed: ${msg}` };
   }
 }
 

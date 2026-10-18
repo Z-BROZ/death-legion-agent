@@ -186,12 +186,16 @@ async function ocrExtract(dataUrl: string): Promise<string> {
 /* ---------------- public API ---------------- */
 
 /**
- * Describe an image (data URL). Tries every configured vision model first,
- * then falls back to OCR text extraction. No long sleeps — users get an
- * answer (or an honest failure) in seconds.
+ * Describe an image (data URL).
+ * - If VISION_API_KEY is configured → try every configured vision model first.
+ * - Without a key, vision providers are skipped (every current vision API is
+ *   key-walled as of late 2026 — Pollinations anon went text-only, GitHub
+ *   Models was shut down 2026-07-30) and we go straight to OCR.
+ * - OCR text extraction is the always-on fallback: it recovers visible TEXT
+ *   from screenshots/memes so the agent can still help.
  */
 export async function describeImage(dataUrl: string, question?: string): Promise<string> {
-  const models = [VISION_MODEL, ...VISION_FALLBACK_MODELS];
+  const models = VISION_KEY ? [VISION_MODEL, ...VISION_FALLBACK_MODELS] : [];
   let sawBusy = false;
   let lastErr: Error | null = null;
 

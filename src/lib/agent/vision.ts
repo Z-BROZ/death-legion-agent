@@ -67,6 +67,8 @@ async function callVisionProvider(dataUrl: string, model: string, question?: str
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      // GitHub API (models.github.ai) REQUIRES a User-Agent — bare fetch sends none → 403
+      'User-Agent': 'DL-Agent/2.0 (+https://death-legion.agent)',
       ...(VISION_KEY ? { Authorization: `Bearer ${VISION_KEY}` } : {}),
     },
     body: JSON.stringify({
@@ -105,6 +107,39 @@ async function callVisionProvider(dataUrl: string, model: string, question?: str
   const text = json?.choices?.[0]?.message?.content?.trim();
   if (!text) throw new VisionError('vision returned empty response');
   return text.slice(0, 1400);
+}
+
+/**
+ * Diagnostic (NO secrets returned): call every vision model once with a tiny
+ * 1×1 png and report HTTP status + short body snippet per model. Used by the
+ * temporary /api/vision-debug route to verify provider health from the host.
+ */
+export async function debugVisionProviders(): Promise<unknown[]> {
+  const tiny =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const out: unknown[] = [];
+  for (const model of [VISION_MODEL, ...VISION_FALLBACK_MODELS]) {
+    try {
+      const text = await callVisionProvider(tiny, model);
+      out.push({ model, ok: true, snippet: text.slice(0, 120) });
+    } catch (e) {
+      out.push({
+        model,
+        ok: false,
+        kind: e instanceof VisionBusyError ? 'busy' : e instanceof VisionError ? 'error' : 'crash',
+        message: (e as Error).message.slice(0, 200),
+      });
+    }
+  }
+  try {
+    const t = await ocrExtract(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    );
+    out.push({ model: 'ocr-space', ok: true, snippet: t.slice(0, 120) });
+  } catch (e) {
+    out.push({ model: 'ocr-space', ok: false, message: (e as Error).message.slice(0, 200) });
+  }
+  return out;
 }
 
 /* ---------------- OCR fallback (text extraction) ---------------- */
